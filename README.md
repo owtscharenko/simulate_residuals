@@ -6,3 +6,5 @@ numpy
 matplotlib
 tqdm
 scipy
+
+To run the script simply call "python ./simulate_residuals.py " from the checked out folder
