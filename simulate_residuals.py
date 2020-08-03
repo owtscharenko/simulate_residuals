@@ -66,7 +66,7 @@ def propagate_sim(n_tracks=10000, input_res=1., asymmetric_pixels = False, beam_
             # create discretized hits following the track
             # x_hit[i, plane] = np.random.normal(f(z[plane], tracks_x_slope[i], tracks_x_seed[i]), res[plane] / np.sqrt(12)) // res[plane]
             x_hit[i, plane] = f(z[plane], tracks_x_slope[i], tracks_x_seed[i])# // res[plane]
-            x_hit[i, plane] = np.around(x_hit[i, plane] - 0.5) + 1
+            x_hit[i, plane] = np.around(x_hit[i, plane] - 0.5 * input_res) + input_res
             x_hit[i, plane] *= res[plane]
             
             # propagate seed x and x_slope to planes 1 - 6
