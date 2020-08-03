@@ -11,23 +11,48 @@ def f(x, a, b):
     return a * x + b
 
 
-def propagate_sim(n_tracks=10000, input_res=1., beam_width=1200, slope_width=0.25):
-    # all values in um, slope in mRad
+def propagate_sim(n_tracks=10000, input_res=1., asymmetric_pixels = False, beam_width=1200, slope_width=0.25):
+    """ 
+    This function draws samples for starting position and starting angle from a gaussian distribution.
+    These start values are propagated with a straight line through the first N_planes -2 telescope planes, on each plane a hit is created
+    where the hit position is slightly smeared within the same pixel. Multiple scattering is not considered at this stage.
+    For the fit the hits are collected and fitted with a given "reconstruction sigma".
+    At the end residuals for the last and second to last plane are calculated. 
+    These residuals are unbiased, meaning the hits were not considered in the track fit.
+    ----------------------------
+    INPUT:
+        n_tracks : int
+            number of tracks to simulate
+        input_res : float
+            pixel pitch
+        asymmetric_pixels : bool
+            if True change resolution of every second plane to 5 times input_res
+        beam_width : float, unit is µm
+            determines 1 sigma of the position of the start coordinate
+        slope_width : float, unit is Rad
+            determines 1 sigma of the starting angle
+    OUTPUT:
+        nothing, pdf file is written to execution folder.
+    """
+    # all values in um, tracks_x_slope in mRad
 
     # number of planes
     n_planes = 8
 
     # res is pixel resolution
     res = np.array([input_res]*n_planes)
-    res[-2:] *= 0.4
-
+    if asymmetric_pixels == True:
+        res = np.array([input_res, input_res * 5]* (n_planes//2))
+        res[-2:] *= 0.4
     z = [5200., 30000.0, 57000.0, 84000, 111000, 138000, 1e6, 4.5e6]
     # z = [5200., 105200.0, 205200.0, 305200, 405200, 505200, 605200, 705200000]
 
-    # intialize MC
+    # array for MC starting points
     x_hit = np.zeros(shape=(n_tracks, n_planes))
+    # draw start position and angle from gaussian
     tracks_x_seed = np.random.normal(0, beam_width, n_tracks)
     tracks_x_slope = np.random.normal(0, slope_width * 1e-3, n_tracks)
+    # draw reconstruction error for hit from gaussian distribution
     reco_sigma = np.random.normal(0,res[-3]/np.sqrt(12)*1000, n_tracks)
 
     # prepare track storage
@@ -35,7 +60,7 @@ def propagate_sim(n_tracks=10000, input_res=1., beam_width=1200, slope_width=0.2
     residuals_second = []
     residuals_last = []
 
-    # draw smeared hit in all planes, also fit track seed for each plane
+    # propagate hit through all planes, also fit track seed for first planes
     for i in tqdm(range(n_tracks)):
         for plane in range(n_planes):
             # create discretized hits following the track
@@ -49,15 +74,16 @@ def propagate_sim(n_tracks=10000, input_res=1., beam_width=1200, slope_width=0.2
                 tracks_x[i, plane] = f(z[plane], tracks_x_slope[i], tracks_x_seed[i])
             else:
                 x_hit[i, plane] = f(z[plane]*1.02, tracks_x_slope[i], tracks_x_seed[i]) + np.random.normal(0,res[plane]) #// res[plane]
-        # reconstruct track fit straight line, use first 4 planes
+        # reconstruct track: fit straight line, use first 6 planes
         popt, pcov = curve_fit(f, z[:-2], tracks_x[i, :-2], sigma=np.ones_like(tracks_x[i, :-2]) * reco_sigma[i], absolute_sigma=True)
-        # only project track for last 2 planes, use fit from first 6 planes
+        # project track to last 2 planes, use fit from first 6 planes
         tracks_x[i, -2] = f(z[-2], *popt)
         tracks_x[i, -1] = f(z[-1], *popt)
         # calculate residuals
         residuals_second.append(tracks_x[i, -2] - x_hit[i, -2])
         residuals_last.append(tracks_x[i, -1] - x_hit[i, -1])
 
+    # plot histograms
     plt.hist(residuals_last, bins = 50)
     plt.xlabel("x residuum")
     plt.title("residuals on last plane - %.f $\mu m$ pixel pitch" % res[-1])
@@ -98,7 +124,7 @@ if __name__ == '__main__':
     _ = FigureCanvas(fig)
     ax = fig.add_subplot(111)
 
-    for resolution in [250., 50., 10., 2., 1.]:
+    for resolution in [50., 10., 2., 1.]:
         result = propagate_sim(n_tracks=10000, input_res=resolution)
         ax.plot(result[0], result[2], linestyle="None", marker="o", label = "%.f $\mu m$" % resolution)
         ax.legend()
